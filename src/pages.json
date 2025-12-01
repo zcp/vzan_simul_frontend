@@ -1,0 +1,122 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "跳转中",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/venue/VenueDisplayPage",
+      "style": {
+        "navigationBarTitleText": "主分会场展示",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/room/new/RoomList",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/room/new/RoomCreate",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/room/new/RoomManage",
+      "style": {
+        "navigationBarTitleText": "房间管理",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/room/new/RoomBasicSettings",
+      "style": {
+        "navigationBarTitleText": "基本设置",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/room/new/MultiVenueManage",
+      "style": {
+        "navigationBarTitleText": "多会场管理",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/room/RoomDetail",
+      "style": {
+        "navigationBarTitleText": "房间详情"
+      }
+    },
+    {
+      "path": "pages/live/new/LiveView",
+      "style": {
+        "navigationBarTitleText": "正在直播",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/common/NotFound",
+      "style": {
+        "navigationBarTitleText": "页面未找到"
+      }
+    },
+    {
+      "path": "pages/auth/callback",
+      "style": {
+        "navigationBarTitleText": "认证回调",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/topic/TopicList",
+      "style": {
+        "navigationBarTitleText": "专题管理",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/topic/TopicCreate",
+      "style": {
+        "navigationBarTitleText": "创建专题",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/topic/TopicDisplay",
+      "style": {
+        "navigationBarTitleText": "专题展示",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/topic/TopicManage",
+      "style": {
+        "navigationBarTitleText": "专题管理",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "LiveSaaS",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f7f8fa"
+  },
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^uni-(.*)": "@dcloudio/uni-ui/lib/uni-$1/uni-$1.vue",
+      "^App(.*)": "@/components/App$1.vue",
+      "^Modal(.*)": "@/components/Modal$1.vue"
+    }
+  }
+}
