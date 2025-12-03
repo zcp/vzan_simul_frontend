@@ -51,12 +51,6 @@
       }
     },
     {
-      "path": "pages/room/RoomDetail",
-      "style": {
-        "navigationBarTitleText": "房间详情"
-      }
-    },
-    {
       "path": "pages/live/new/LiveView",
       "style": {
         "navigationBarTitleText": "正在直播",
