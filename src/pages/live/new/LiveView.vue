@@ -41,8 +41,6 @@
               <div class="video-area-wrap">
                 <!-- 使用 VideoPlayer 组件播放 -->
                 <!-- #ifdef H5 -->
-                <!-- 使用 VideoPlayer 组件播放（H5） -->
-                <!-- #ifdef H5 -->
                 <div v-if="isH5 && playerSourceUrl" style="width: 100%; margin: 0 auto; box-sizing: border-box;">
                   <VideoPlayer :src="playerSourceUrl" />
                 </div>
@@ -65,8 +63,7 @@
                 <!-- 占位/加载状态 -->
                 <div v-if="!playerSourceUrl" class="status-container placeholder-video">
                   <div class="event-title">{{ roomDetail?.title || '直播活动' }}</div>
-                  <div class="event-subtitle">直播未开始或回放生成中</div>
-                  <div class="event-date">{{ formatTime(currentSession?.start_time || '') }}</div>
+                  <div class="event-subtitle">回放生成中</div>
                   <div class="playback-status">
                     <el-tag type="info" size="large" effect="dark">{{ emptySourceHint }}</el-tag>
                   </div>
@@ -160,7 +157,7 @@
 
                   <!-- 纯文本 -->
                   <el-scrollbar v-if="tab.content_type === 'text'" height="300px">
-                    <div class="tab-text-content">{{ tab.text_content }}</div>
+                    <div class="tab-text-content" v-html="tab.text_content"></div>
                   </el-scrollbar>
 
                   <!-- 纯图片 -->
@@ -207,15 +204,17 @@
                 </el-scrollbar>
               </el-tab-pane>
 
-              <!-- 内置固定 Tab：病例介绍 -->
-              <el-tab-pane label="病例介绍" name="builtin-case">
-                <div style="padding: 20px; text-align: center; color:#909399;">内容待补充</div>
+              <!-- 内置固定 返回主会场 -->
+              <el-tab-pane label="返回主会场" name="builtin-back-main">
+                <div style="padding: 20px; text-align: center;">
+                  <el-button type="success" link @click="goToMainVenue">返回主会场</el-button>
+                </div>
               </el-tab-pane>
 
-              <!-- 内置固定 Tab：返回主会场 -->
-              <el-tab-pane label="返回主会场" name="builtin-back-topic">
+              <!-- 内置固定 Tab：返回营销专题列表 -->
+              <el-tab-pane label="返回营销专题" name="builtin-back-topic">
                 <div style="padding: 20px; text-align: center;">
-                   <el-button type="success" link @click="goToTopicDisplay">返回主会场</el-button>
+                   <el-button type="success" link @click="goToTopicDisplay">返回营销专题</el-button>
                 </div>
               </el-tab-pane>
               
@@ -309,7 +308,7 @@
     <el-dialog
       v-model="isTabEditorVisible"
       :title="editingTabId ? '编辑 Tab' : '新增 Tab'"
-      width="500px"
+      width="700px"
       append-to-body
     >
       <el-form :model="currentTabForm" label-width="80px">
@@ -333,7 +332,9 @@
         
         <!-- 根据类型显示内容输入 -->
         <el-form-item label="文本内容" v-if="['text', 'mixed'].includes(currentTabForm.content_type)">
-          <el-input type="textarea" :rows="4" v-model="currentTabForm.text_content" placeholder="支持换行" />
+          <div class="tab-editor-wrapper">
+            <RichTextEditor v-model="currentTabForm.text_content" />
+          </div>
         </el-form-item>
         <el-form-item label="图片链接" v-if="['image', 'mixed'].includes(currentTabForm.content_type)">
           <el-input v-model="currentTabForm.image_url" placeholder="输入图片 URL" />
@@ -355,9 +356,11 @@ import { onLoad } from '@dcloudio/uni-app';
 import { storeToRefs } from 'pinia';
 import { useSessionStore } from '../../../store/session';
 import { useRoomStore } from '../../../store/room';
+import topicApi from '../../../api/topic';
 import { 
   getRoomDetail, getRoomMessages, sendRoomMessage, updateRoom,
-  createRoomTab, updateRoomTab, deleteRoomTab, getRoomTabList
+  createRoomTab, updateRoomTab, deleteRoomTab, getRoomTabList,
+  getSubVenues
 } from '../../../api/room';
 import type { RoomMessage } from '../../../api/room';
 import type { RoomTab } from '../../../types/room';
@@ -377,19 +380,13 @@ import {
   Iphone, User, ArrowLeft, ArrowRight, Star, Plus, Edit, Delete
 } from '@element-plus/icons-vue';
 import { BASE_API_URL } from '@/constants/api';
-import topicApi from '@/api/topic';
-import { useTopicStore } from '@/store/topic';
-import { storeToRefs as storeToRefsTopic } from 'pinia';
-
+import { getSessionList } from '@/api/session';
+import RichTextEditor from '../../../components/RichTextEditor.vue';
 const sessionStore = useSessionStore();
 const { currentSession, loading, error } = storeToRefs(sessionStore);
 const roomStore = useRoomStore();
 const { rooms } = storeToRefs(roomStore);
 const authStore = useAuthStore();
-
-// 话题 / 营销专题 Store（用于获取当前专题下的房间列表）
-const topicStore = useTopicStore();
-const { categories } = storeToRefsTopic(topicStore);
 
 // [模拟] 假装是管理员
 const isAdmin = ref(true);
@@ -409,7 +406,6 @@ const fetchTabs = async (roomId: string) => {
     const raw = res as any;
     const list = raw?.data?.items || [];
     adminTabs.value = Array.isArray(list) ? list : [];
-    console.log('🐛 [DEBUG] Admin Tabs loaded:', adminTabs.value);
   } catch (e) {
     console.error('获取 Tab 列表失败', e);
   }
@@ -596,33 +592,53 @@ function processImageUrl(url: string | undefined): string {
   return thumb;
 }
 
-// --- 营销专题轮播相关逻辑 ---
-// 使用 topicStore.categories 中的 rooms 作为数据源，展示当前专题下的房间列表
+// --- 分会场轮播（基于主会场及其子房间） ---
 const subVenueCurrentIndex = ref(0);
 const subVenueCardWidth = ref(200); // 每张卡片宽度
 const visibleCards = ref(4); // 一屏显示的卡片数量
 
-// 将所有分类下的房间拉平为一个列表
-const marketingRooms = computed(() => {
-  const list: any[] = [];
-  (categories.value || []).forEach((cat: any) => {
-    if (Array.isArray(cat.rooms)) {
-      list.push(...cat.rooms);
-    }
-  });
-  return list;
-});
+// 主会场及其所有分会场房间
+const mainRoomId = ref<string | null>(null);
+const mainRoomDetail = ref<any | null>(null); // 主会场房间详情（用于在分会场视角下展示主会场卡片）
+const subRooms = ref<any[]>([]); // 分会场房间列表
+const roomSessionsMap = ref<Record<string, any | null>>({}); // room_id -> 最新场次
+const roomCoverMap = ref<Record<string, string>>({}); // room_id -> 封面 URL（参考 MultiVenueManage 的 tempCoverUrls）
 
-// 过滤掉当前房间自身，只展示“同专题的其他房间”
+// 统一的分会场卡片数据
 const subVenueCards = computed(() => {
-  const currentRoomId = currentSession.value?.room_id;
-  return marketingRooms.value
-    .filter((room: any) => !currentRoomId || room.id !== currentRoomId)
-    .map((room: any) => ({
-      ...room,
-      _latestStatus: room.live_status || room.status || 'scheduled',
-      _latestStartTime: room.start_time || room.created_at,
-    }));
+  const cards: any[] = [];
+
+  // 如果当前在分会场，且已获取主会场详情，则先拼一张主会场卡片
+  const curRoomId = currentSession.value?.room_id;
+  const parentId = (roomDetail.value as any)?.parent_room_id as string | null | undefined;
+  if (parentId && mainRoomDetail.value) {
+    const mainLatestSession = roomSessionsMap.value[mainRoomDetail.value.id] || null;
+    cards.push({
+      id: mainRoomDetail.value.id,
+      title: mainRoomDetail.value.title || '主会场',
+      cover_url: roomCoverMap.value[mainRoomDetail.value.id] || mainRoomDetail.value.cover_url || null,
+      _latestStatus: mainLatestSession?.status || 'scheduled',
+      _latestStartTime:
+        mainLatestSession?.start_time || mainLatestSession?.created_at || mainRoomDetail.value.start_time,
+    });
+  }
+
+  // 再拼接所有分会场房间卡片（分会场视角下排除当前会场自身）
+  (subRooms.value || []).forEach((room: any) => {
+    if (parentId && room.id === curRoomId) {
+      return; // 分会场进入时，不重复展示自己
+    }
+    const latestSession = roomSessionsMap.value[room.id] || null;
+    cards.push({
+      id: room.id,
+      title: room.title || '分会场',
+      cover_url: roomCoverMap.value[room.id] || room.cover_url || null,
+      _latestStatus: latestSession?.status || 'scheduled',
+      _latestStartTime: latestSession?.start_time || latestSession?.created_at || room.start_time,
+    });
+  });
+
+  return cards;
 });
 
 const subVenueMaxIndex = computed(() => {
@@ -670,11 +686,22 @@ const subVenueNextSlide = () => {
   }
 };
 
-const goToSubVenue = (roomId: string) => {
-  if (roomId) {
-    // 与 TopicDisplay.vue 的 goLive 行为一致：通过 room_id 打开 LiveView
-    uni.navigateTo({ url: `/pages/live/new/LiveView?room_id=${roomId}` });
+// 点击分会场卡片：使用 uni.navigateTo 跳转到对应房间的 LiveView 页面
+// H5 地址等价于：/#/pages/live/new/LiveView?room_id=xxx
+const goToSubVenue = (subRoomId: string) => {
+  if (!subRoomId) {
+    ElMessage.warning('分会场信息缺失');
+    return;
   }
+  const url = `/pages/live/new/LiveView?room_id=${encodeURIComponent(subRoomId)}`;
+  console.log('使用 uni.navigateTo 跳转分会场:', url);
+  uni.navigateTo({
+    url,
+    fail(err) {
+      console.error('uni.navigateTo 跳转分会场失败:', err);
+      ElMessage.error('跳转分会场失败');
+    },
+  });
 };
 
 // --- 播放逻辑 ---
@@ -703,12 +730,9 @@ const playerSourceUrl = computed(() => {
   // 现在正式逻辑：优先使用后端 session.playback_url
   const playback = (currentSession.value as any)?.playback_url as string | null | undefined;
   console.log('currentSession.playback_url =', playback);
-  console.log("1")
   if (playback) {
-    console.log("2")
     return normalizePlaybackUrl(playback) as string | null;
   }
-  console.log("3")
   // 如果未来还有直播中的直播放流地址，可以在这里补充 fallback 逻辑
   return null;
 });
@@ -759,6 +783,147 @@ watch(() => currentSession.value?.status, (next) => {
 onBeforeUnmount(() => {
   stopPlaybackPolling();
 });
+
+const goToMainVenue = () => {
+  const curRoomId = currentSession.value?.room_id;
+  const detail = roomDetail.value as any | null;
+
+  if (!curRoomId || !detail) {
+    ElMessage.warning('房间信息未加载完成，无法判断主会场');
+    return;
+  }
+
+  const parentId = detail.parent_room_id as string | null | undefined;
+
+  // 1. 当前就是主会场：没有 parent_room_id
+  if (!parentId) {
+    ElMessage.info('当前页为主会场');
+    return;
+  }
+
+  // 2. 有 parent_room_id，但为空字符串之类的异常情况
+  if (typeof parentId !== 'string' || !parentId.trim()) {
+    ElMessage.warning('该直播无关联的主会场');
+    return;
+  }
+
+  const mainId = parentId.trim();
+
+  // 3. 跳转到主会场的 LiveView 页面
+  const url = `/pages/live/new/LiveView?room_id=${encodeURIComponent(mainId)}`;
+  console.log('[LiveView] goToMainVenue, mainRoomId =', mainId, 'url =', url);
+
+  uni.navigateTo({
+    url,
+    fail(err) {
+      console.error('跳转主会场失败:', err);
+      ElMessage.error('跳转主会场失败');
+    },
+  });
+};
+
+// 根据当前房间信息确定主会场，并加载其所有分会场及最新场次
+const loadSubVenuesForCurrentRoom = async () => {
+  const curRoomId = currentSession.value?.room_id;
+  if (!curRoomId || !roomDetail.value) {
+    subRooms.value = [];
+    roomSessionsMap.value = {};
+    mainRoomId.value = null;
+    mainRoomDetail.value = null;
+    return;
+  }
+
+  // 根据 parent_room_id 判断当前是主会场还是分会场
+  const parentId = (roomDetail.value as any).parent_room_id as string | null | undefined;
+  const mainId = parentId || (roomDetail.value as any).id || curRoomId;
+  mainRoomId.value = mainId;
+
+  try {
+    // 1. 获取主会场详情（仅在当前为分会场时需要展示主会场卡片）
+    if (parentId) {
+      try {
+        const mainDetailResp = await getRoomDetail(mainId);
+        // 兼容 { code, data } 或直接 Room
+        const mRaw: any = mainDetailResp;
+        mainRoomDetail.value = (mRaw && (mRaw as any).title) ? mRaw : mRaw.data || null;
+      } catch (e) {
+        console.error('获取主会场详情失败:', e);
+        mainRoomDetail.value = null;
+      }
+    } else {
+      // 当前就是主会场
+      mainRoomDetail.value = roomDetail.value;
+    }
+
+    // 2. 获取主会场下所有分会场房间列表
+    const res = await getSubVenues(mainId, { page: 1, size: 50 });
+    const raw = res as any;
+    const list = raw?.items || raw?.data?.items || raw?.data?.rooms || [];
+    subRooms.value = Array.isArray(list) ? list : [];
+
+    // 2.1 使用房间详情 API 补全封面地址（参考 MultiVenueManage.vue 的 fetchCoverUrlsForRooms）
+    const coverTasks = subRooms.value.map((room: any) =>
+      getRoomDetail(room.id)
+        .then((res: any) => ({ id: room.id, res }))
+        .catch(() => ({ id: room.id, res: null }))
+    );
+    const coverResults = await Promise.all(coverTasks);
+    const coverMap: Record<string, string> = {};
+    coverResults.forEach(({ id, res }) => {
+      if (res && (res as any).cover_url) {
+        coverMap[id] = (res as any).cover_url;
+      } else if (res && (res as any).data?.cover_url) {
+        coverMap[id] = (res as any).data.cover_url;
+      }
+    });
+    roomCoverMap.value = coverMap;
+
+    // 3. 为主会场和每个分会场房间获取其最新一条场次
+    const sessionsMap: Record<string, any | null> = {};
+
+    // 主会场场次
+    try {
+      const mainSessionsRes = await getSessionList(mainId, { page: 1, size: 1 });
+      const msRaw = mainSessionsRes as any;
+      const msItems = msRaw?.data?.items || msRaw?.data?.list || msRaw?.items || [];
+      sessionsMap[mainId] = Array.isArray(msItems) && msItems.length > 0 ? msItems[0] : null;
+    } catch (e) {
+      console.error('获取主会场场次失败:', e);
+      sessionsMap[mainId] = null;
+    }
+
+    // 分会场场次
+    for (const room of subRooms.value) {
+      try {
+        const sRes = await getSessionList(room.id, { page: 1, size: 1 });
+        const sRaw = sRes as any;
+        const sItems = sRaw?.data?.items || sRaw?.data?.list || sRaw?.items || [];
+        sessionsMap[room.id] = Array.isArray(sItems) && sItems.length > 0 ? sItems[0] : null;
+      } catch (e) {
+        console.error('获取分会场场次失败:', e);
+        sessionsMap[room.id] = null;
+      }
+    }
+
+    roomSessionsMap.value = sessionsMap;
+  } catch (e) {
+    console.error('加载分会场房间失败:', e);
+    subRooms.value = [];
+    roomSessionsMap.value = {};
+    roomCoverMap.value = {};
+    mainRoomDetail.value = null;
+  }
+};
+
+// 当房间详情或当前场次变化时，刷新分会场数据
+watch(
+  () => [currentSession.value?.room_id, roomDetail.value?.id, (roomDetail.value as any)?.parent_room_id],
+  () => {
+    loadSubVenuesForCurrentRoom();
+  },
+  { immediate: true }
+);
+
 
 // 监听 Tabs 变化，自动设置默认选中项
 watch(roomTabs, (tabs) => {
@@ -856,14 +1021,10 @@ const fetchRoomMessages = async (initial = false) => {
     // 兼容处理：有些接口返回直接是 PaginatedResponse，有些包裹在 data 中
     const rawData = res as any;
     const data = rawData.data || rawData;
-    
-    console.log('🐛 [DEBUG] fetchRoomMessages 响应:', { raw: rawData, extracted: data });
-
     if (data && Array.isArray(data.items)) {
       // 后端返回的是按时间倒序（最新的在前），为了符合聊天习惯（上旧下新），我们需要翻转数组
       // 注意：data.items 是只读的，需要复制一份
       const newMsgs = [...data.items].reverse();
-      console.log('🐛 [DEBUG] 解析出的新消息(已翻转):', newMsgs);
       
       if (initial) {
         messages.value = newMsgs;
@@ -871,8 +1032,6 @@ const fetchRoomMessages = async (initial = false) => {
         // 加载更多（历史记录）时，新获取的旧消息应该拼接到数组头部
         messages.value = [...newMsgs, ...messages.value];
       }
-      
-      console.log('🐛 [DEBUG] 更新后的 messages.value 长度:', messages.value.length);
 
       if (newMsgs.length < messagePageSize.value) {
         hasMoreMessages.value = false;
@@ -941,7 +1100,6 @@ const fetchRoomTopics = async (roomId: string) => {
       console.log('找到已发布专题，topic_id:', tid);
     } else {
       currentTopicId.value = null;
-      console.log('未找到已发布专题或ID无效');
     }
   } catch (error) {
     console.error('获取专题信息失败:', error);
@@ -949,24 +1107,22 @@ const fetchRoomTopics = async (roomId: string) => {
   }
 };
 
-const goToTopicDisplay = async () => {
-  if (currentTopicId.value) {
-    uni.navigateTo({ url: `/pages/topic/TopicDisplay?topic_id=${currentTopicId.value}` });
+const goToTopicDisplay = () => {
+  const roomId = currentSession.value?.room_id;
+  console.log('[LiveView] goToTopicDisplay clicked, roomId =', roomId);
+
+  if (!roomId) {
+    ElMessage.warning('当前直播间未关联房间ID，无法跳转专题');
     return;
   }
-  try {
-    const { value } = await ElMessageBox.prompt('请输入有效的专题ID (UUID)', '返回营销专题', {
-      confirmButtonText: '前往',
-      cancelButtonText: '取消',
-      inputPattern: /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/,
-      inputErrorMessage: '专题ID格式无效，请粘贴完整 UUID'
-    }) as unknown as { value: string };
-    if (value) {
-      uni.navigateTo({ url: `/pages/topic/TopicDisplay?topic_id=${value}` });
-    }
-  } catch {
-    // 取消或关闭
-  }
+
+  uni.navigateTo({
+    url: `/pages/topic/TopicDisplay?room_id=${roomId}`,
+    fail(err) {
+      console.error('跳转营销专题失败:', err);
+      ElMessage.error('跳转营销专题失败');
+    },
+  });
 };
 
 const getStatusText = (status: string) => {
@@ -1120,7 +1276,7 @@ onLoad(async (options) => {
   .video-area-wrap {
     width: 100%;
     height: 100%;
-    min-height: 400px;
+    min-height: 360px;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1374,6 +1530,20 @@ onLoad(async (options) => {
   }
 }
 
+.tab-editor-wrapper {
+  width: 100%;          
+  min-height: 300px;   
+  max-height: 500px;    
+  overflow: visible;
+  z-index: 20;
+  
+}
+
+.tab-editor-wrapper :deep(.your-editor-root-class) {
+  /* 如果 RichTextEditor 里面有明确根节点 class，可以在这里把高度也设成 100% */
+  height: 100%;
+}
+
 /* 响应式适配 */
 @media (max-width: 768px) {
   .live-view-container {
@@ -1555,5 +1725,81 @@ onLoad(async (options) => {
     font-size: 9px;
     padding: 1px 3px;
   }
+}
+
+.placeholder-video {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;  /* 继承外层高度 */
+  border-radius: 8px;
+  background: linear-gradient(135deg, #4289d0ff 0%, #93a9d8ff 40%, #2563eb 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 半透明光斑做一点氛围 */
+.placeholder-video::before {
+  content: '';
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%);
+  top: -80px;
+  right: -40px;
+  pointer-events: none;
+}
+
+.placeholder-video::after {
+  content: '';
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(59,130,246,0.35), transparent 70%);
+  bottom: -100px;
+  left: -60px;
+  pointer-events: none;
+}
+
+.placeholder-video .event-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  z-index: 1;
+}
+
+.placeholder-video .event-subtitle {
+  font-size: 14px;
+  opacity: 0.9;
+  margin-bottom: 12px;
+  z-index: 1;
+}
+
+.placeholder-video .event-date {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-bottom: 18px;
+  z-index: 1;
+}
+
+.placeholder-video .playback-status {
+  z-index: 1;
+}
+
+/* 让 tag 看起来更像按钮 */
+.placeholder-video .el-tag {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(15,23,42,0.7);
+  border-color: rgba(148, 163, 184, 0.7);
 }
 </style>

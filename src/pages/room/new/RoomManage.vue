@@ -6,10 +6,10 @@
           <span class="top-left-title">{{ roomDetail?.title || '加载中…' }}</span>
         </div>
         <div class="top-left-row time">
-          <el-tag class="top-left-status" :type="getStatusType(roomDetail?.status)">
-            {{ getStatusText(roomDetail?.status) }}
+          <el-tag class="top-left-status" :type="getStatusType(latestSessionStatus)">
+            {{ getStatusText(latestSessionStatus) }}
           </el-tag>
-          <span class="top-left-time">开始时间 {{ formatDateTime(roomDetail?.start_time) }}</span>
+          <span class="top-left-time">开始时间 {{ formatDateTime(latestSessionStartTime) }}</span>
         </div>
       </div>
     </template>
@@ -20,12 +20,17 @@
         <el-card class="room-info-card fixed-layout">
           <div class="room-hero">
             <div class="hero-left">
-              <el-image
-                class="hero-cover"
-                :src="getCoverSrc(roomDetail?.cover_url)"
-                fit="cover"
-                @error="onHeroCoverError"
-              />
+            <el-image
+              class="hero-cover"
+              :src="getCoverSrc(roomDetail?.cover_url)"
+              fit="cover"
+            >
+              <template #error>
+                <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f5f7fa;color:#c0c4cc;font-size:12px">
+                  无法加载封面
+                </div>
+              </template>
+            </el-image>
             </div>
             <div class="hero-right">
               <el-tooltip :content="roomDetail?.title || '加载中...'" placement="top">
@@ -44,10 +49,10 @@
                   {{ roomDetail?.is_private ? '加密' : '公开' }}
                 </el-tag>
               </div>
-              <!-- 一行：开始时间 -->
+              <!-- 一行：开始时间（取最近一场 session 的开始时间） -->
               <div class="meta-row">
                 <span class="meta-label">开始时间：</span>
-                <span class="meta-text">{{ formatDateTime(roomDetail?.start_time) }}</span>
+                <span class="meta-text">{{ formatDateTime(latestSessionStartTime) }}</span>
               </div>
             </div>
           </div>
@@ -67,6 +72,17 @@
               <div class="card-content">
                 <el-icon class="card-icon" :size="32" color="#409eff"><Promotion /></el-icon>
                 <div class="card-title">基本设置</div>
+                <div class="card-desc">支持修改直播间的基本信息</div>
+                <el-button type="primary" size="small" class="enter-button">进入</el-button>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="function-card" :class="{ 'clickable': true }" @click="goToTopicCreate">
+              <div class="card-content">
+                <el-icon class="card-icon" :size="32" color="#409eff"><Promotion /></el-icon>
+                <div class="card-title">营销专题</div>
+                <div class="card-desc">创建和管理营销专题活动</div>
                 <el-button type="primary" size="small" class="enter-button">进入</el-button>
               </div>
             </el-card>
@@ -104,16 +120,6 @@
                 <el-icon class="card-icon" :size="32" color="#909399"><Share /></el-icon>
                 <div class="card-title">私域引流</div>
                 <div class="card-desc">将用户引流到私域流量池</div>
-              </div>
-            </el-card>
-          </el-col>
-          <el-col :span="6">
-            <el-card class="function-card" :class="{ 'clickable': true }" @click="goToTopicCreate">
-              <div class="card-content">
-                <el-icon class="card-icon" :size="32" color="#409eff"><Promotion /></el-icon>
-                <div class="card-title">营销专题</div>
-                <div class="card-desc">创建和管理营销专题活动</div>
-                <el-button type="primary" size="small" class="enter-button">进入</el-button>
               </div>
             </el-card>
           </el-col>
@@ -272,6 +278,7 @@ import {
 import RoomManageLayout from '@/layouts/RoomManageLayout.vue'
 import { getRoomDetail } from '@/api/room'
 import type { Room } from '@/types/room'
+import { getSessionList } from '@/api/session'
 import dayjs from 'dayjs'
 import { BASE_API_URL } from '@/constants/api'
 
@@ -280,6 +287,9 @@ const roomDetail = ref<Room | null>(null)
 const loading = ref(false)
 const broadcastTime = ref<Date | null>(null)
 const heroCoverError = ref(false)
+// 最近一场 session 的开始时间与状态
+const latestSessionStartTime = ref<string | undefined>(undefined)
+const latestSessionStatus = ref<string | undefined>(undefined)
 
 // 获取房间ID
 const getRoomId = (): string | null => {
@@ -288,7 +298,7 @@ const getRoomId = (): string | null => {
   return currentPage.options?.room_id || null
 }
 
-// 加载房间详情
+// 加载房间详情 + 最近一场 session
 const loadRoomDetail = async () => {
   const roomId = getRoomId()
   if (!roomId) {
@@ -298,11 +308,36 @@ const loadRoomDetail = async () => {
 
   loading.value = true
   try {
+    // 1）获取房间详情
     const response = await getRoomDetail(roomId)
     if (response && response.code === 200) {
       roomDetail.value = response.data
     } else {
       throw new Error(response?.message || '获取房间详情失败')
+    }
+
+    // 2）获取该房间下的场次列表，取最近一场的开始时间和状态
+    try {
+      const sessionRes = await getSessionList(roomId, { page: 1, size: 10 })
+      const items = (sessionRes as any)?.data?.items || []
+      if (Array.isArray(items) && items.length > 0) {
+        // 按开始时间降序排序，取最近一场
+        const sorted = items.slice().sort((a: any, b: any) => {
+          const ta = new Date(a.start_time || 0).getTime()
+          const tb = new Date(b.start_time || 0).getTime()
+          return tb - ta
+        })
+        const picked = sorted[0]
+        latestSessionStartTime.value = picked?.start_time || undefined
+        latestSessionStatus.value = picked?.status || undefined
+      } else {
+        latestSessionStartTime.value = undefined
+        latestSessionStatus.value = undefined
+      }
+    } catch (e) {
+      console.error('获取房间场次列表失败:', e)
+      latestSessionStartTime.value = undefined
+      latestSessionStatus.value = undefined
     }
   } catch (error: any) {
     console.error('加载房间详情失败:', error)
@@ -313,9 +348,30 @@ const loadRoomDetail = async () => {
 }
 
 // 格式化时间
+// 格式化时间（复用 RoomList 的清洗逻辑）
 const formatDateTime = (dateTime: string | undefined): string => {
   if (!dateTime) return '未设置'
-  return dayjs(dateTime).format('YYYY-MM-DD HH:mm:ss')
+
+  try {
+    let cleanTime = dateTime
+
+    // 移除微秒部分（6位数字）
+    cleanTime = cleanTime.replace(/\.\d{6}/, '')
+
+    // 修复重复的时区标识符（+00:00Z -> Z）
+    cleanTime = cleanTime.replace(/\+00:00Z$/, 'Z')
+
+    const date = dayjs(cleanTime)
+    if (date.isValid()) {
+      return date.format('YYYY-MM-DD HH:mm:ss')
+    } else {
+      console.warn('Invalid date format after cleaning:', cleanTime)
+      return 'Invalid Date'
+    }
+  } catch (error) {
+    console.error('Date formatting error:', error, 'for time:', dateTime)
+    return 'Invalid Date'
+  }
 }
 
 // 封面规范化与兜底
@@ -325,30 +381,39 @@ const getCoverSrc = (url?: string) => {
   if (/^https?:\/\//.test(url)) return url
   const base = BASE_API_URL.replace(/\/+$/, '')
   const origin = base.replace(/\/api\/.*/, '')
-  return origin + (url.startsWith('/') ? url : '/' + url)
+  const full = origin + (url.startsWith('/') ? url : '/' + url)
+  return full
 }
 const onHeroCoverError = () => {
   heroCoverError.value = true
 }
 
-// 获取状态类型
-const getStatusType = (status: string | undefined): 'success' | 'warning' | 'info' => {
+// 获取状态类型（支持全部 7 种 session 状态）
+const getStatusType = (status: string | undefined): 'success' | 'warning' | 'info' | 'danger' => {
   if (!status) return 'info'
-  const statusMap: Record<string, 'success' | 'warning' | 'info'> = {
-    'scheduled': 'warning',
-    'live': 'success',
-    'finished': 'info'
+  const statusMap: Record<string, 'success' | 'warning' | 'info' | 'danger'> = {
+    scheduled: 'warning',
+    live: 'success',
+    finished: 'info',
+    processing: 'warning',
+    ready: 'success',
+    error: 'danger',
+    archived: 'info'
   }
   return statusMap[status] || 'info'
 }
 
-// 获取状态文本
+// 获取状态文本（支持全部 7 种 session 状态）
 const getStatusText = (status: string | undefined): string => {
   if (!status) return '未知'
   const statusMap: Record<string, string> = {
-    'scheduled': '未开始',
-    'live': '直播中',
-    'finished': '已结束'
+    scheduled: '未开始',
+    live: '直播中',
+    finished: '已结束',
+    processing: '转码中',
+    ready: '可回放',
+    error: '异常',
+    archived: '已归档'
   }
   return statusMap[status] || status
 }
@@ -493,6 +558,7 @@ onMounted(() => {
 
 .hero-actions :deep(.el-button) {
   width: 120px; /* 统一按钮宽度 */
+  margin: 0; 
   justify-content: center;
 }
 

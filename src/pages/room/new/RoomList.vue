@@ -17,10 +17,10 @@
           <el-col>
             <el-space :size="8">
               <el-button type="primary" @click="goToCreatePage">创建直播</el-button>
+              <el-button type="primary" @click="goToTopicList">营销内容</el-button>
               <el-button @click="showComingSoonToast">批量创建直播</el-button>
               <el-button :icon="Setting" @click="showComingSoonToast">直播全局设置</el-button>
               <el-button :icon="Collection" @click="showComingSoonToast">直播教程</el-button>
-              <el-button @click="goToTopicList">营销内容</el-button>
             </el-space>
           </el-col>
           <el-col>

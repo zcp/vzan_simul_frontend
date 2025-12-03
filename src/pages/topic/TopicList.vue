@@ -34,7 +34,7 @@
           <el-form-item>
             <el-button type="primary" @click="goToCreate">
               <el-icon><Plus /></el-icon>
-              新建页面
+              新建营销专题
             </el-button>
           </el-form-item>
         </el-form>

@@ -128,11 +128,6 @@ export const request = <T = any>(options: RequestOptions, retry = 3, timeout = 5
   
   // 验证JWT格式
   const isValidJWT = token && token.split('.').length === 3;
-  console.log('🔍 JWT格式验证:', {
-    isValid: isValidJWT,
-    parts: token ? token.split('.').length : 0
-  });
-  
   if (token && token.trim() && isValidJWT) {
     // 尝试多种认证头格式
     header['Authorization'] = `Bearer ${token}`;
@@ -140,7 +135,6 @@ export const request = <T = any>(options: RequestOptions, retry = 3, timeout = 5
     // header['Authorization'] = `JWT ${token}`;
     // header['Authorization'] = token;
     // header['X-Auth-Token'] = token;
-    console.log('✅ 已添加认证头:', `Bearer ${token.substring(0, 20)}...`);
   } else {
     console.log('❌ 未找到有效认证Token或格式错误，请求可能失败');
   }
@@ -170,16 +164,7 @@ export const request = <T = any>(options: RequestOptions, retry = 3, timeout = 5
       success: (res: any) => {
         clearTimeout(timer);
         if (isTimeout) return;
-        
-        console.log('🌐 [DEBUG] 请求成功响应:', {
-          statusCode: res.statusCode,
-          url: url,
-          data: res.data,
-          dataType: typeof res.data
-        });
-        
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log('✅ [DEBUG] 请求成功，返回数据:', res.data);
           resolve(res.data as T);
                  } else if (res.statusCode === 401) {
            // 增量开发：401认证失败处理

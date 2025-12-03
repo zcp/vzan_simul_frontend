@@ -182,13 +182,7 @@
               />
             </el-form-item>
             <el-form-item label="分会场封面" prop="cover_url">
-              <el-upload
-                class="avatar-uploader"
-                action="#"
-                :show-file-list="false"
-                :before-upload="handleCoverUploadClick"
-                drag
-              >
+              <div class="avatar-uploader" @click="handleCoverClick">
                 <template v-if="formModel.cover_url">
                   <el-image
                     :src="formModel.cover_url"
@@ -202,13 +196,12 @@
                     拖拽文件到此处或 <em>点击上传</em>
                   </div>
                 </template>
-                <template #tip>
-                  <div class="el-upload__tip">
-                    推荐图片尺寸为: 1000*562, 不超过10M <br />
-                    支持png、jpg、gif格式
-                  </div>
-                </template>
-              </el-upload>
+
+                <div class="el-upload__tip">
+                  推荐图片尺寸为: 1000*562, 不超过10M <br />
+                  支持png、jpg、gif格式
+                </div>
+              </div>
             </el-form-item>
             <el-form-item label="直播时间" prop="start_time">
               <el-date-picker
@@ -705,8 +698,8 @@ const showComingSoon = (featureName: string) => {
   ElMessage.info(`${featureName}功能待开发，敬请期待`)
 }
 
-// 封面上传占位提示
-const handleCoverUploadClick = () => {
+// 点击封面区域，选择图片
+const handleCoverClick = () => {
   uni.chooseImage({
     count: 1,
     success: (chooseRes) => {
@@ -720,7 +713,6 @@ const handleCoverUploadClick = () => {
       ElMessage.error('选择图片失败')
     },
   })
-  return false
 }
 
 // 回放设置占位提示
@@ -881,8 +873,7 @@ const uploadCoverToServer = (roomId: string, filePath: string) => {
   margin-top: 20px;
 }
 
-/* Dialog specific styles */
-.avatar-uploader .el-upload {
+.avatar-uploader {
   border: 1px dashed var(--el-border-color);
   border-radius: 6px;
   cursor: pointer;
@@ -897,7 +888,7 @@ const uploadCoverToServer = (roomId: string, filePath: string) => {
   justify-content: center;
 }
 
-.avatar-uploader .el-upload:hover {
+.avatar-uploader:hover {
   border-color: var(--el-color-primary);
 }
 

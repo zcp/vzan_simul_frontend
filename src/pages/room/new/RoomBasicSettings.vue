@@ -1,23 +1,19 @@
 <template>
   <RoomManageLayout>
     <div class="basic-settings-content">
+      <!-- 悬浮在表单上方的工具栏（方案 A 的核心） -->
+      <div class="basic-settings-toolbar">
+        <div class="toolbar-left">
+          <!-- 这里你可以用 el-page-header 的样式，也可以就显示文字 -->
+          <span class="page-title">基本设置</span>
+        </div>
+        <div class="toolbar-right">
+          <el-button @click="goBack">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+        </div>
+      </div>
       <el-card class="settings-card">
         <!-- 页面标题 -->
-        <el-page-header @back="goBack" content="基本设置">
-          <template #extra>
-            <el-space>
-              <el-button @click="goBack">取消</el-button>
-              <el-button 
-                type="primary" 
-                :loading="saving"
-                @click="handleSave"
-              >
-                保存
-              </el-button>
-            </el-space>
-          </template>
-        </el-page-header>
-
         <!-- 表单区域 -->
         <el-form
           ref="formRef"
@@ -460,6 +456,39 @@ onMounted(() => {
 .settings-card {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+/* 新的顶部工具栏：只在中间内容区域顶部悬浮 */
+.basic-settings-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: #fff;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 左右区域简单排版 */
+.toolbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.page-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-form-wrapper {
+  margin-top: 64px;  /* 等于 header 的高度，避免表单被盖住，数值按实际调整 */
 }
 
 .settings-form {
